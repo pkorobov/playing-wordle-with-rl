@@ -5,8 +5,7 @@ import os
 import gym
 from gym import spaces
 
-import tokenizer
-from tokenizer import LetterTokenizer
+from tokenizer import Tokenizer
 
 
 GAME_VOCABULARY = ["sword", "crane", "plate"]
@@ -25,14 +24,13 @@ class WordleEnv(gym.Env):
         self.guess = None
         self.word = None
 
-        self.tokenizer = LetterTokenizer()
+        self.tokenizer = Tokenizer()
         self.game_voc_matrix = None
         self._initialize_vocabulary()
 
         self.action_space = spaces.MultiDiscrete([26] * 5)
+        # I am not even sure that it is somehow used by gym or parallel wrapper
         self.observation_space = spaces.MultiDiscrete([26] * 2 * 5 * 6)
-        # self.observation_space = spaces.unflatten(spaces.MultiDiscrete([26] * 2 * 5 * 6), np.array([2, 6, 5], dtype=np.int32))
-        # self.observation_space = spaces.Box(low=0, high=30, shape=(2, 5, 6))
         self.reset()
 
     def _initialize_vocabulary(self):

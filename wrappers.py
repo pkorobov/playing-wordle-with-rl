@@ -39,12 +39,25 @@ class StartWithRandomActions(gym.Wrapper):
         return obs
 
 
-class TokenizerWrapper(gym.Wrapper):
-    def __init__(self, env, tokenizer):
-        super(TokenizerWrapper, self).__init__(env)
-        self.tokenizer = tokenizer
+class SequenceWrapper(gym.Wrapper):
+    def __init__(self, env, sos_token):
+        super(SequenceWrapper, self).__init__(env)
+        self.sos_token = sos_token
 
+    def _prepare_obs(self, obs):
+        new_obs = np.concatenate([np.full(shape=(obs.shape[0], obs.shape[1], 1), fill_value=self.sos_token), obs], axis=-1)
+        new_obs = new_obs.reshape(obs.shape[0], -1)
+        return new_obs
+        
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        obs = self._prepare_obs(obs)
+        return obs, rew, done, info
 
+    def reset(self, **kwargs):
+        obs = self.env.reset(**kwargs)
+        obs = self._prepare_obs(obs)
+        return obs
 
 
 class ClipReward(gym.RewardWrapper):
@@ -144,6 +157,10 @@ class _thunk:
         return nature_dqn_env(seed=self.env_seed, summaries=False, clip_reward=False, **self.kwargs)
 
 
+# TODO:
+#  fix problem with parallelization after reset
+#  there are some random int obs'es after reset
+#  but it should be all zeros
 def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, clip_reward=True):
     """ Wraps env as in Nature DQN paper and creates parallel actors. """
     if nenvs is not None:
