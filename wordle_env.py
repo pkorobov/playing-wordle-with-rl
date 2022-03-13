@@ -71,9 +71,10 @@ class WordleEnv(gym.Env):
             done (bool): whether the episode has ended, in which case further step() calls will return undefined results
             info: None TODO: use it somehow
         """
-
-        assert len(action.shape) == 1
-        assert len(action) == WORD_LENGTH
+        
+        action = action.squeeze()
+        assert len(action.shape) == 1, action.shape
+        assert len(action) == WORD_LENGTH, len(action)
 
         info = dict()
 

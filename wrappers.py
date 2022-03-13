@@ -34,6 +34,26 @@ class SequenceWrapper(gym.Wrapper):
         return obs
 
 
+# it's easier to work without multiprocessing with it
+class ReshapeWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super(ReshapeWrapper, self).__init__(env)
+
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        return (
+            obs[None],
+            np.expand_dims(rew, 0),
+            np.expand_dims(done, 0),
+            [info]
+        )
+
+    def reset(self, **kwargs):
+        obs = self.env.reset(**kwargs)
+        obs = obs[None]
+        return obs
+
+
 class ClipReward(gym.RewardWrapper):
     """ Modifes reward to be in {-1, 0, 1} by taking sign of it. """
 
@@ -131,10 +151,6 @@ class _thunk:
         return nature_dqn_env(seed=self.env_seed, summaries=False, clip_reward=False, **self.kwargs)
 
 
-# TODO:
-#  fix problem with parallelization after reset
-#  there are some random int obs'es after reset
-#  but it should be all zeros
 def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, clip_reward=True):
     """ Wraps env as in Nature DQN paper and creates parallel actors. """
     if nenvs is not None:
@@ -157,6 +173,8 @@ def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, clip_re
 
     env = WordleEnv()
     env.seed(seed)
+    
+    env = SequenceWrapper(env, sos_token=1)
 
     if summaries:
         env = TensorboardSummaries(env)

@@ -183,6 +183,10 @@ class ParallelEnvBatch(EnvBatch):
         self.observation_space = SpaceBatch(observation_spaces)
         self.action_space = SpaceBatch(action_spaces)
 
+        # wordle specific field common for all envs
+        self.tokenizer = self._envs[0].tokenizer
+        self.game_voc_matrix = self._envs[0].game_voc_matrix
+        
     @property
     def nenvs(self):
         return self._nenvs
