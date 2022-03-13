@@ -8,7 +8,7 @@ from gym import spaces
 from tokenizer import Tokenizer
 
 
-GAME_VOCABULARY = ["sword", "crane", "plate"]
+DEBUG_GAME_VOCABULARY = DEBUG_GAME_ANSWERS = ["sword", "crane", "plate"]
 WORD_LENGTH = 5
 MAX_TRIES = 6
 EMBEDDING_DIM = 64
@@ -16,7 +16,10 @@ EMBEDDING_DIM = 64
 
 # state: 2 x 6 x 5 (guess, is_right)
 class WordleEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, debug=False):
+
+        self.debug = debug
+
         self.num_tries = 0
         # is_right matrix will contain 4 states per letter: empty, wrong, right, present in the word
         self.is_right = None
@@ -26,6 +29,7 @@ class WordleEnv(gym.Env):
 
         self.tokenizer = Tokenizer()
         self.game_voc_matrix = None
+        self.game_ans_matrix = None
         self._initialize_vocabulary()
 
         self.action_space = spaces.MultiDiscrete([26] * 5)
@@ -36,17 +40,34 @@ class WordleEnv(gym.Env):
     def _initialize_vocabulary(self):
         assert self.tokenizer is not None
 
-        self.game_voc_matrix = np.zeros(shape=(len(GAME_VOCABULARY), WORD_LENGTH), dtype=np.int32)
-        for i in range(len(GAME_VOCABULARY)):
-            for j, letter in enumerate(GAME_VOCABULARY[i]):
+        if not self.debug:
+            with open('data/allowed_words.txt', 'r') as f:
+                game_vocabulary = f.read().split()
+        else:
+            game_vocabulary = DEBUG_GAME_VOCABULARY
+        
+        self.game_voc_matrix = np.zeros(shape=(len(game_vocabulary), WORD_LENGTH), dtype=np.int32)
+        for i in range(len(game_vocabulary)):
+            for j, letter in enumerate(game_vocabulary[i]):
                 self.game_voc_matrix[i, j] = self.tokenizer.letter2index[letter]
+
+        if not self.debug:
+            with open('data/possible_words.txt', 'r') as f:
+                game_answers = f.read().split()
+        else:
+            game_answers = DEBUG_GAME_ANSWERS
+        
+        self.game_ans_matrix = np.zeros(shape=(len(game_answers), WORD_LENGTH), dtype=np.int32)
+        for i in range(len(game_answers)):
+            for j, letter in enumerate(game_answers[i]):
+                self.game_ans_matrix[i, j] = self.tokenizer.letter2index[letter]
 
     def reset(self, seed: Optional[int] = None):
         if seed is not None:
             np.random.seed(seed)
 
-        word_idx = np.random.randint(len(GAME_VOCABULARY))
-        self.word = self.game_voc_matrix[word_idx]
+        word_idx = np.random.randint(len(self.game_ans_matrix))
+        self.word = self.game_ans_matrix[word_idx]
 
         self.num_tries = 0
 
@@ -78,11 +99,11 @@ class WordleEnv(gym.Env):
 
         info = dict()
 
-        self.is_right[self.num_tries, :] = 1  # not right
+        self.is_right[self.num_tries, :] = self.tokenizer.guess_state2index['<MISS>']  # not right
         right_mask = (action == self.word)
-        self.is_right[self.num_tries, right_mask] = 2  # right
+        self.is_right[self.num_tries, right_mask] = self.tokenizer.guess_state2index['<RIGHT>']  # right
         is_in = np.isin(self.word, action)
-        self.is_right[self.num_tries, is_in] = 3  # semi-right
+        self.is_right[self.num_tries, is_in] = self.tokenizer.guess_state2index['<CONTAINED>']  # semi-right
 
         self.guess[self.num_tries, :] = action
 
