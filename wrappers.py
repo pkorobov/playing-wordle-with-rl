@@ -10,7 +10,7 @@ from wordle_env import WordleEnv
 from gym.wrappers import Monitor
 from tensorboardX import SummaryWriter
 
-from env_batch import ParallelEnvBatch
+from env_batch import ParallelEnvBatch, WordleParallelEnvBatch
 
 
 class SequenceWrapper(gym.Wrapper):
@@ -163,7 +163,7 @@ def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, clip_re
                              f"length equal to nenvs which is {nenvs}")
 
         thunks = [_thunk(i, env_seed) for i, env_seed in enumerate(seed)]
-        env = ParallelEnvBatch(thunks)
+        env = WordleParallelEnvBatch(thunks)
 
         if summaries:
             env = TensorboardSummaries(env, prefix="wordle")

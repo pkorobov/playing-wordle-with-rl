@@ -73,6 +73,7 @@ class WordleEnv(gym.Env):
 
         self.is_right = np.zeros((MAX_TRIES, WORD_LENGTH), dtype=np.int32)
         self.guess = np.zeros((MAX_TRIES, WORD_LENGTH), dtype=np.int32)
+        self.is_right[:, :] = self.tokenizer.guess_state2index['<PAD>']
         self.guess[:, :] = self.tokenizer.letter2index['<PAD>']
 
         obs = np.stack([self.guess, self.is_right])
@@ -128,9 +129,9 @@ class WordleEnv(gym.Env):
                 if self.guess[i, j] != 0:
                     letter = self.tokenizer.index2letter[self.guess[i, j]]
                 c = None
-                if self.is_right[i, j] == 2:
+                if self.is_right[i, j] == self.tokenizer.guess_state2index['<RIGHT>']:
                     c = "green"
-                elif self.is_right[i, j] == 3:
+                elif self.is_right[i, j] == self.tokenizer.guess_state2index['<CONTAINED>']:
                     c = "yellow"
                 s.append(colored(letter, color=c))
             print("".join(s), end="\n")

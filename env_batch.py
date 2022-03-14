@@ -4,6 +4,9 @@ from multiprocessing import Process, Pipe
 from gym import Env, Wrapper, Space
 import numpy as np
 
+from wordle_env import WORD_LENGTH
+from tokenizer import Tokenizer
+
 import multiprocessing
 logger = multiprocessing.log_to_stderr()
 logger.setLevel(multiprocessing.SUBDEBUG)
@@ -37,7 +40,7 @@ class SpaceBatch(Space):
 
 
 class EnvBatch(Env):
-    def __init__(self, make_env, nenvs=None):
+    def __init__(self, make_env, nenvs=None, debug=False):
         make_env_functions = self._get_make_env_functions(make_env, nenvs)
         self._envs = [make_env() for make_env in make_env_functions]
         self._nenvs = len(self.envs)
@@ -182,10 +185,6 @@ class ParallelEnvBatch(EnvBatch):
             action_spaces.append(ac_space)
         self.observation_space = SpaceBatch(observation_spaces)
         self.action_space = SpaceBatch(action_spaces)
-
-        # wordle specific field common for all envs
-        self.tokenizer = self._envs[0].tokenizer
-        self.game_voc_matrix = self._envs[0].game_voc_matrix
         
     @property
     def nenvs(self):
@@ -215,3 +214,26 @@ class ParallelEnvBatch(EnvBatch):
 
     def render(self):
         raise ValueError("render not defined for %s" % self)
+
+
+class WordleParallelEnvBatch(ParallelEnvBatch):
+    def __init__(self, make_env, debug=False, *args, **kwargs):
+        super().__init__(make_env, *args, **kwargs)
+        self.tokenizer = Tokenizer()
+        self.game_voc_matrix = None
+        self.debug = debug
+        self._initialize_vocabulary()
+        
+    def _initialize_vocabulary(self):
+        assert self.tokenizer is not None
+
+        if not self.debug:
+            with open('data/allowed_words.txt', 'r') as f:
+                game_vocabulary = f.read().split()
+        else:
+            game_vocabulary = DEBUG_GAME_VOCABULARY
+        
+        self.game_voc_matrix = np.zeros(shape=(len(game_vocabulary), WORD_LENGTH), dtype=np.int32)
+        for i in range(len(game_vocabulary)):
+            for j, letter in enumerate(game_vocabulary[i]):
+                self.game_voc_matrix[i, j] = self.tokenizer.letter2index[letter]
