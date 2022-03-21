@@ -54,13 +54,6 @@ class ReshapeWrapper(gym.Wrapper):
         return obs
 
 
-class ClipReward(gym.RewardWrapper):
-    """ Modifes reward to be in {-1, 0, 1} by taking sign of it. """
-
-    def reward(self, reward):
-        return np.sign(reward)
-
-
 class TensorboardSummaries(gym.Wrapper):
     """ Writes env summaries."""
 
@@ -148,10 +141,10 @@ class _thunk:
         self.kwargs = kwargs
 
     def __call__(self):
-        return nature_dqn_env(seed=self.env_seed, summaries=False, clip_reward=False, **self.kwargs)
+        return nature_dqn_env(seed=self.env_seed, summaries=False, **self.kwargs)
 
 
-def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, clip_reward=True):
+def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False):
     """ Wraps env as in Nature DQN paper and creates parallel actors. """
     if nenvs is not None:
         if seed is None:
@@ -167,8 +160,6 @@ def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, clip_re
 
         if summaries:
             env = TensorboardSummaries(env, prefix="wordle")
-        if clip_reward:
-            env = ClipReward(env)
         return env
 
     env = WordleEnv()
@@ -182,6 +173,4 @@ def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, clip_re
     if monitor:
         env = gym.wrappers.Monitor(env, directory="videos", force=True)
 
-    if clip_reward:
-        env = ClipReward(env)
     return env
