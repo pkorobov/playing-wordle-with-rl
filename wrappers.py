@@ -19,7 +19,10 @@ class SequenceWrapper(gym.Wrapper):
         self.sos_token = sos_token
 
     def _prepare_obs(self, obs):
-        new_obs = np.concatenate([np.full(shape=(obs.shape[0], obs.shape[1], 1), fill_value=self.sos_token), obs], axis=-1)
+        start_obs_part = np.full(shape=(obs.shape[0], obs.shape[1], 1), fill_value=self.sos_token)
+        # TODO: use pad token explicitly
+        start_obs_part[:, self.num_tries + 1:, :] = 0
+        new_obs = np.concatenate([start_obs_part, obs], axis=-1)
         new_obs = new_obs.reshape(obs.shape[0], -1)
         return new_obs
         
