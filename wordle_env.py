@@ -111,17 +111,13 @@ class WordleEnv(gym.Env):
         reward, done = right_mask.sum() / WORD_LENGTH, False
         
         if self.num_tries > 0:
-            if (action == self.guess[self.num_tries - 1]).all():
-                reward = -5.0
-            else:
-                reward -= (
-                    (action == self.guess[self.num_tries - 1]) & 
-                    (self.is_right[self.num_tries - 1] == self.tokenizer.guess_state2index['<MISS>'])
-                ).sum() / WORD_LENGTH
+            reward -= (
+                (self.guess[:self.num_tries] == action) & 
+                (self.is_right[:self.num_tries] == self.tokenizer.guess_state2index['<MISS>'])
+            ).any(axis=0).sum() / WORD_LENGTH
 
         if right_mask.all() or self.num_tries == MAX_TRIES - 1:
             if right_mask.all():
-                print("SUCCESS")
                 reward = 10.0
             done = True
             obs = self.reset()
