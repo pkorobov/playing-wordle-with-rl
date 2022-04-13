@@ -16,9 +16,10 @@ EMBEDDING_DIM = 64
 
 # state: 2 x 6 x 5 (guess, is_right)
 class WordleEnv(gym.Env):
-    def __init__(self, debug=False):
+    def __init__(self, debug=False, reward_penalty_ratio=2.0):
 
         self.debug = debug
+        self.reward_penalty_ratio = reward_penalty_ratio
 
         self.num_tries = 0
         # is_right matrix will contain 4 states per letter: empty, wrong, right, present in the word
@@ -101,14 +102,15 @@ class WordleEnv(gym.Env):
         info = dict()
 
         self.is_right[self.num_tries, :] = self.tokenizer.guess_state2index['<MISS>']  # not right
-        right_mask = (action == self.word)
-        self.is_right[self.num_tries, right_mask] = self.tokenizer.guess_state2index['<RIGHT>']  # right
         is_in = np.isin(self.word, action)
         self.is_right[self.num_tries, is_in] = self.tokenizer.guess_state2index['<CONTAINED>']  # semi-right
+        right_mask = (action == self.word)
+        self.is_right[self.num_tries, right_mask] = self.tokenizer.guess_state2index['<RIGHT>']  # right
 
         self.guess[self.num_tries, :] = action
 
         reward, done = right_mask.sum() / WORD_LENGTH, False
+        reward *= self.reward_penalty_ratio
         
         if self.num_tries > 0:
             reward -= (
