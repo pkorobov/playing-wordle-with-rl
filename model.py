@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from torch.distributions import Categorical
 
 
 num_letters = 29
@@ -28,7 +29,7 @@ def get_allowed_letters(word_matrix, word_mask, position):
     letter_mask = torch.full(fill_value=False, size=(batch_size, num_letters))
 
     # letter_mask = letter_mask.scatter(index=word_matrix_masked, dim=1, value=True)
-    rows = torch.arange(0, letter_mask.size(0))[:,None]
+    rows = torch.arange(0, letter_mask.size(0))[:, None]
     n_col = word_matrix_masked.size(1)
     letter_mask[rows.repeat(1, n_col), word_matrix_masked] = 1
 
@@ -82,8 +83,6 @@ class AttentionLayer(nn.Module):
 
         return outputs
 
-
-from torch.distributions import Categorical
 
 class Encoder(nn.Module):
     def __init__(self, letter_tokens, guess_tokens, emb_dim, hid_dim, dropout, pad_token=0):
@@ -141,7 +140,6 @@ class Decoder(nn.Module):
                 
         prediction = self.fc_out(output.squeeze(1))
         return prediction, hidden, cell
-
 
 
 class RNNAgent(nn.Module):
@@ -203,7 +201,7 @@ class RNNAgent(nn.Module):
         
         if self.debug_mode:
             fig, ax = plt.subplots(1, self.output_len)
-        
+
         for t in range(1, self.output_len + 1):
 
             # cur_logits: (batch_size, num_classes)
@@ -221,7 +219,7 @@ class RNNAgent(nn.Module):
             logits[:, t, :] = cur_logits
             probs = F.softmax(cur_logits, dim=-1)
 
-            allowed_letters = get_allowed_letters(self.game_voc_matrix, word_mask, t-1)            
+            allowed_letters = get_allowed_letters(self.game_voc_matrix, word_mask, t-1)
             probs = torch.where(allowed_letters, probs, torch.zeros_like(probs))
             probs = probs / probs.sum(dim=-1, keepdim=True)
             # torch.where(<your_tensor> != 0, <tensor with zeroz>, <tensor with the value>)
@@ -246,7 +244,7 @@ class RNNAgent(nn.Module):
             "actions": actions.cpu().numpy(),
             # "logits": logits,
             "log_probs": log_probs,
-            "values": values.squeeze(),
+            "values": values.reshape(-1),
         }
     
     def act(self, inputs):

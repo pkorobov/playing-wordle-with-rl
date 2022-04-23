@@ -16,7 +16,7 @@ EMBEDDING_DIM = 64
 
 # state: 2 x 6 x 5 (guess, is_right)
 class WordleEnv(gym.Env):
-    def __init__(self, debug=False, reward_penalty_ratio=2.0):
+    def __init__(self, debug=False, reward_penalty_ratio=1.0):
 
         self.debug = debug
         self.reward_penalty_ratio = reward_penalty_ratio

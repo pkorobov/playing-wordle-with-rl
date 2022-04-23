@@ -60,7 +60,11 @@ class ReshapeWrapper(gym.Wrapper):
 class TensorboardSummaries(gym.Wrapper):
     """ Writes env summaries."""
 
-    def __init__(self, env, prefix=None, running_mean_size=100, step_var=None):
+    def __init__(
+            self, env, prefix=None,
+            rew_running_mean_size=100, ep_running_mean_size=5,
+            step_var=None
+    ):
         super(TensorboardSummaries, self).__init__(env)
         self.episode_counter = 0
         self.prefix = prefix or self.env.spec.id
@@ -71,8 +75,10 @@ class TensorboardSummaries(gym.Wrapper):
         self.rewards = np.zeros(self.nenvs)
         self.had_ended_episodes = np.zeros(self.nenvs, dtype=np.bool)
         self.episode_lengths = np.zeros(self.nenvs)
-        self.reward_queues = [deque([], maxlen=running_mean_size)
+        self.reward_queues = [deque([], maxlen=rew_running_mean_size)
                               for _ in range(self.nenvs)]
+        self.episode_length_queues = [deque([], maxlen=ep_running_mean_size)
+                                      for _ in range(self.nenvs)]
 
     def should_write_summaries(self):
         """ Returns true if it's time to write summaries. """
@@ -81,38 +87,47 @@ class TensorboardSummaries(gym.Wrapper):
     def add_summaries(self):
         """ Writes summaries. """
         self.writer.add_scalar(
-            f"Episodes/total_reward",
+            f"Episodes_length/mean_{self.episode_length_queues[0].maxlen}",
+            np.mean([np.mean(q) for q in self.episode_length_queues]),
+            self.step_var
+        )
+        self.writer.add_scalar(
+            f"Episodes_length/min_{self.episode_length_queues[0].maxlen}",
+            np.min([np.min(q) for q in self.episode_length_queues]),
+            self.step_var
+        )
+        self.writer.add_scalar(
+            f"Episodes_length/max_{self.episode_length_queues[0].maxlen}",
+            np.max([np.max(q) for q in self.episode_length_queues]),
+            self.step_var
+        )
+        self.writer.add_scalar(
+            f"Episodes_reward/total",
             np.mean([q[-1] for q in self.reward_queues]),
             self.step_var
         )
         self.writer.add_scalar(
-            f"Episodes/reward_mean_{self.reward_queues[0].maxlen}",
+            f"Episodes_reward/mean_{self.reward_queues[0].maxlen}",
             np.mean([np.mean(q) for q in self.reward_queues]),
-            self.step_var
-        )
-        self.writer.add_scalar(
-            f"Episodes/episode_length",
-            np.mean(self.episode_lengths),
             self.step_var
         )
         if self.had_ended_episodes.size > 1:
             self.writer.add_scalar(
-                f"Episodes/min_reward",
+                f"Episodes_reward/min_{self.reward_queues[0].maxlen}",
                 min(q[-1] for q in self.reward_queues),
                 self.step_var
             )
             self.writer.add_scalar(
-                f"Episodes/max_reward",
+                f"Episodes_reward/max_{self.reward_queues[0].maxlen}",
                 max(q[-1] for q in self.reward_queues),
                 self.step_var
             )
-        self.episode_lengths.fill(0)
         self.had_ended_episodes.fill(False)
 
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
         self.rewards += rew
-        self.episode_lengths[~self.had_ended_episodes] += 1
+        self.episode_lengths += 1
 
         info_collection = [info] if isinstance(info, dict) else info
         done_collection = [done] if isinstance(done, bool) else done
@@ -121,8 +136,12 @@ class TensorboardSummaries(gym.Wrapper):
         for i in done_indices:
             if not self.had_ended_episodes[i]:
                 self.had_ended_episodes[i] = True
+
             self.reward_queues[i].append(self.rewards[i])
             self.rewards[i] = 0
+
+            self.episode_length_queues[i].append(self.episode_lengths[i])
+            self.episode_lengths[i] = 0
 
         self.step_var += self.nenvs
         if self.should_write_summaries():
