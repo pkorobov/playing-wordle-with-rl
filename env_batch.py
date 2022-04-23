@@ -7,9 +7,10 @@ import numpy as np
 from wordle_env import WORD_LENGTH
 from tokenizer import Tokenizer
 
-import multiprocessing
-logger = multiprocessing.log_to_stderr()
-logger.setLevel(multiprocessing.SUBDEBUG)
+# Uncomment for debug
+# import multiprocessing
+# logger = multiprocessing.log_to_stderr()
+# logger.setLevel(multiprocessing.SUBDEBUG)
 
 
 class SpaceBatch(Space):
