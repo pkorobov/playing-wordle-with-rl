@@ -28,10 +28,12 @@ if __name__ == "__main__":
     tokenizer = Tokenizer()
 
     policy = RNNAgent(
-        len(tokenizer.index2letter),
-        len(tokenizer.index2guess_state),
-        32, 128,
-        len(tokenizer.index2letter),
+        letter_tokens=len(tokenizer.index2letter),
+        guess_tokens=len(tokenizer.index2guess_state),
+        emb_dim=32,
+        hid_dim=128,
+        num_layers=2,
+        output_dim=len(tokenizer.index2letter),
         output_len=5,
         sos_token=1,
         game_voc_matrix=game_voc_matrix

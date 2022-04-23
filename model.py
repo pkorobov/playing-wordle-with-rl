@@ -38,23 +38,47 @@ def get_allowed_letters(word_matrix, word_mask, position):
 
 
 class LSTMLayerCustom(nn.Module):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size, num_layers):
         super().__init__()
-        self.cell = nn.LSTMCell(input_size, hidden_size)
+
+        # we want to use hidden states for attention, but in torch we need to get them manually
+        # and thus we'll make two passes for bidirectional network
+        self.num_layers = num_layers
+        self.rnn_forward = nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.rnn_backward = nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True)
+
         self.input_size = input_size
         self.hidden_size = hidden_size
 
     def forward(self, input):
         batch_size, max_seq_length = input.shape[0], input.shape[1]        
 
-        h, c = torch.zeros(batch_size, self.hidden_size), torch.zeros(batch_size, self.hidden_size)
-        hs, cs = list(), list()
-        
+        hsl, csl = list(), list()
+        h = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+        c = torch.zeros(self.num_layers, batch_size, self.hidden_size)
         for i in range(max_seq_length):
-            h, c = self.cell(input[:, i, :], (h, c))
-            hs.append(h)
-            cs.append(c)
-        return torch.stack(hs, dim=1), torch.stack(cs, dim=1)
+            _, (h, c) = self.rnn_forward(input[:, i:i+1, :], (h, c))
+            hsl.append(h)
+            csl.append(c)
+        hsl = torch.stack(hsl, dim=0) #.permute(0, 2, 1, 3).reshape(max_seq_length, batch_size, -1)
+        csl = torch.stack(csl, dim=0) #.permute(0, 2, 1, 3).reshape(max_seq_length, batch_size, -1)
+
+        h = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+        c = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+        hsr, csr = list(), list()
+        for i in reversed(range(max_seq_length)):
+            _, (h, c) = self.rnn_backward(input[:, i:i+1, :], (h, c))
+            hsr.append(h)
+            csr.append(c)
+
+        hsr = list(reversed(hsr))
+        csr = list(reversed(csr))
+        hsr = torch.stack(hsr, dim=0) #.permute(0, 2, 1, 3).reshape(max_seq_length, batch_size, -1)
+        csr = torch.stack(csr, dim=0) #.permute(0, 2, 1, 3).reshape(max_seq_length, batch_size, -1)
+
+        hs, cs = torch.cat([hsl, hsr], dim=-1), torch.cat([csl, csr], dim=-1)
+
+        return hs, cs
 
 
 class AttentionLayer(nn.Module):
@@ -94,7 +118,7 @@ class Encoder(nn.Module):
         self.guess_state_embedding = nn.Embedding(guess_tokens, emb_dim)
 
         # self.rnn = nn.LSTM(emb_dim, hid_dim, batch_first=True, num_layers=2)
-        self.rnn = LSTMLayerCustom(2 * emb_dim, hid_dim)
+        self.rnn = LSTMLayerCustom(2 * emb_dim, hid_dim, num_layers=2)
         self.dropout = nn.Dropout(dropout)
     
     def forward(self, letter_seq, state_seq):
@@ -128,7 +152,7 @@ class Decoder(nn.Module):
         
         self.embedding = nn.Embedding(output_dim, emb_dim)
         # self.rnn = nn.LSTM(emb_dim, hid_dim, dropout=dropout, batch_first=True, num_layers=2)       
-        self.rnn = nn.LSTM(emb_dim, hid_dim, dropout=dropout, batch_first=True, num_layers=1)
+        self.rnn = nn.LSTM(emb_dim, hid_dim, dropout=dropout, batch_first=True, num_layers=2)
         self.fc_out = nn.Linear(hid_dim, output_dim)
         self.dropout = nn.Dropout(dropout)
         
@@ -143,20 +167,29 @@ class Decoder(nn.Module):
 
 
 class RNNAgent(nn.Module):
-    def __init__(self, letter_tokens, guess_tokens, emb_dim, hid_dim, output_dim, game_voc_matrix, output_len, sos_token, dropout=0.2):
+    def __init__(self, letter_tokens, guess_tokens, emb_dim, hid_dim, output_dim,
+                 game_voc_matrix, num_layers, output_len, sos_token, dropout=0.2):
         super().__init__()
-        
-        self.encoder = Encoder(letter_tokens, guess_tokens, emb_dim, hid_dim, dropout)
+
+        self.emb_dim = emb_dim
+        self.hid_dim = hid_dim
+        self.ouput_dim = output_dim
+        self.num_layers = num_layers
+        self.output_len = output_len
+
+        # TODO: do not hardcode // 2
+        self.encoder = Encoder(letter_tokens, guess_tokens, emb_dim, hid_dim // 2, dropout)
         self.decoder = Decoder(output_dim, emb_dim, hid_dim, dropout)
         self.attention = AttentionLayer(hid_dim)
 
-        modules = [nn.Linear(hid_dim, hid_dim), nn.ReLU(), nn.Linear(hid_dim, 1)]
+        # TODO: do not hardcode * 2
+        modules = [nn.Linear(hid_dim * 2, hid_dim), nn.ReLU(), nn.Linear(hid_dim, 1)]
         self.V_head = nn.Sequential(*modules)
-        self.logit_head = nn.Linear(hid_dim, output_dim)
+        # TODO: do not hardcode * 2
+        self.logit_head = nn.Linear(2 * hid_dim, output_dim)
         
         self.letter_tokens = letter_tokens
         self.game_voc_matrix = game_voc_matrix
-        self.output_len = output_len
         self.sos_token = sos_token
         self.debug_mode = False
 
@@ -182,8 +215,10 @@ class RNNAgent(nn.Module):
         logits = torch.zeros(batch_size, self.output_len + 1, self.letter_tokens)
 
         encoder_hiddens, encoder_cells = self.encoder(letter_seq, state_seq)        
-        hidden, cell = encoder_hiddens[:, -1:, :], encoder_cells[:, -1:, :]
-        hidden, cell = hidden.permute(dims=(1, 0, 2)), cell.permute(dims=(1, 0, 2))
+        hidden, cell = encoder_hiddens.mean(dim=0), encoder_cells.mean(dim=0)
+        # hidden, cell = encoder_hiddens.mean(dim=0)[:, -1:, :], encoder_cells.mean(dim=0)[:, -1:, :]
+        # hidden, cell = hidden.permute(dims=(1, 0, 2)), cell.permute(dims=(1, 0, 2))
+        encoder_hiddens = encoder_hiddens.permute(2, 0, 1, 3).reshape(batch_size, maxlen, -1)
 
         # compute V
         values = self.V_head(hidden.reshape(batch_size, -1))
@@ -208,8 +243,8 @@ class RNNAgent(nn.Module):
             # actions: (batch_size,)
             _, hidden, cell = self.decoder(input, hidden, cell)
             
-            decoder_hidden = hidden
-            attentive_hidden = self.attention(encoder_hiddens, decoder_hidden.permute(dims=(1, 0, 2)), encoder_hiddens, mask).squeeze(1)
+            decoder_hidden = hidden.permute(dims=(1, 0, 2)).reshape(batch_size, 1, -1)
+            attentive_hidden = self.attention(encoder_hiddens, decoder_hidden, encoder_hiddens, mask).squeeze(1)
             
             if self.debug_mode:
                 map_reshaped = self.attention.attention_map.squeeze().reshape(6, 6).detach().numpy()
