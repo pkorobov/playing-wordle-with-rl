@@ -32,7 +32,7 @@ if __name__ == "__main__":
         guess_tokens=len(tokenizer.index2guess_state),
         emb_dim=32,
         hid_dim=128,
-        num_layers=2,
+        num_layers=1,
         output_dim=len(tokenizer.index2letter),
         output_len=5,
         sos_token=1,

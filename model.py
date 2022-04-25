@@ -109,25 +109,33 @@ class AttentionLayer(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, letter_tokens, guess_tokens, emb_dim, hid_dim, dropout, pad_token=0):
+    def __init__(self, letter_tokens, guess_tokens, emb_dim, hid_dim, num_layers, dropout, max_pos=6, pad_token=0):
         super().__init__()
 
         self.hid_dim = hid_dim
-        
+
+        self.max_pos = max_pos
+        self.pos_embedding = nn.Embedding(max_pos, emb_dim)
         self.letter_embedding = nn.Embedding(letter_tokens, emb_dim)
         self.guess_state_embedding = nn.Embedding(guess_tokens, emb_dim)
 
         # self.rnn = nn.LSTM(emb_dim, hid_dim, batch_first=True, num_layers=2)
-        self.rnn = LSTMLayerCustom(2 * emb_dim, hid_dim, num_layers=2)
+        pos_emb_size = 8
+        self.rnn = LSTMLayerCustom(3 * emb_dim, hid_dim, num_layers=num_layers)
         self.dropout = nn.Dropout(dropout)
     
     def forward(self, letter_seq, state_seq):
+
+        batch_size = letter_seq.shape[0]
+
         # letters_embedded = self.dropout(self.letter_embedding(letter_seq))
         # states_embedded = self.dropout(self.guess_state_embedding(state_seq))
+
+        pos_embedded = self.pos_embedding(torch.arange(self.max_pos).reshape(1, -1)).repeat((batch_size, self.max_pos, 1))
         letters_embedded = self.letter_embedding(letter_seq)
         states_embedded = self.guess_state_embedding(state_seq)
 
-        input_embeddings = torch.cat([letters_embedded, states_embedded], dim=-1)
+        input_embeddings = torch.cat([letters_embedded, states_embedded, pos_embedded], dim=-1)
 
         # TODO: use pad token explicitly
         # lengths = (letter_seq != 0).sum(axis=-1)
@@ -144,7 +152,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, output_dim, emb_dim, hid_dim, dropout):
+    def __init__(self, output_dim, emb_dim, hid_dim, num_layers, dropout):
         super().__init__()
         
         self.output_dim = output_dim
@@ -152,7 +160,7 @@ class Decoder(nn.Module):
         
         self.embedding = nn.Embedding(output_dim, emb_dim)
         # self.rnn = nn.LSTM(emb_dim, hid_dim, dropout=dropout, batch_first=True, num_layers=2)       
-        self.rnn = nn.LSTM(emb_dim, hid_dim, dropout=dropout, batch_first=True, num_layers=2)
+        self.rnn = nn.LSTM(emb_dim, hid_dim, dropout=dropout, batch_first=True, num_layers=num_layers)
         self.fc_out = nn.Linear(hid_dim, output_dim)
         self.dropout = nn.Dropout(dropout)
         
@@ -178,15 +186,15 @@ class RNNAgent(nn.Module):
         self.output_len = output_len
 
         # TODO: do not hardcode // 2
-        self.encoder = Encoder(letter_tokens, guess_tokens, emb_dim, hid_dim // 2, dropout)
-        self.decoder = Decoder(output_dim, emb_dim, hid_dim, dropout)
+        self.encoder = Encoder(letter_tokens, guess_tokens, emb_dim, hid_dim // 2, num_layers, dropout)
+        self.decoder = Decoder(output_dim, emb_dim, hid_dim, num_layers, dropout)
         self.attention = AttentionLayer(hid_dim)
 
         # TODO: do not hardcode * 2
-        modules = [nn.Linear(hid_dim * 2, hid_dim), nn.ReLU(), nn.Linear(hid_dim, 1)]
+        modules = [nn.Linear(hid_dim * num_layers, hid_dim), nn.ReLU(), nn.Linear(hid_dim, 1)]
         self.V_head = nn.Sequential(*modules)
         # TODO: do not hardcode * 2
-        self.logit_head = nn.Linear(2 * hid_dim, output_dim)
+        self.logit_head = nn.Linear(hid_dim * num_layers, output_dim)
         
         self.letter_tokens = letter_tokens
         self.game_voc_matrix = game_voc_matrix
