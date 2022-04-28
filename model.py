@@ -37,52 +37,8 @@ def get_allowed_letters(word_matrix, word_mask, position):
     return letter_mask
 
 
-class LSTMLayerCustom(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers):
-        super().__init__()
-
-        # we want to use hidden states for attention, but in torch we need to get them manually
-        # and thus we'll make two passes for bidirectional network
-        self.num_layers = num_layers
-        self.rnn_forward = nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True)
-        self.rnn_backward = nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True)
-
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-
-    def forward(self, input):
-        batch_size, max_seq_length = input.shape[0], input.shape[1]        
-
-        hsl, csl = list(), list()
-        h = torch.zeros(self.num_layers, batch_size, self.hidden_size)
-        c = torch.zeros(self.num_layers, batch_size, self.hidden_size)
-        for i in range(max_seq_length):
-            _, (h, c) = self.rnn_forward(input[:, i:i+1, :], (h, c))
-            hsl.append(h)
-            csl.append(c)
-        hsl = torch.stack(hsl, dim=0) #.permute(0, 2, 1, 3).reshape(max_seq_length, batch_size, -1)
-        csl = torch.stack(csl, dim=0) #.permute(0, 2, 1, 3).reshape(max_seq_length, batch_size, -1)
-
-        h = torch.zeros(self.num_layers, batch_size, self.hidden_size)
-        c = torch.zeros(self.num_layers, batch_size, self.hidden_size)
-        hsr, csr = list(), list()
-        for i in reversed(range(max_seq_length)):
-            _, (h, c) = self.rnn_backward(input[:, i:i+1, :], (h, c))
-            hsr.append(h)
-            csr.append(c)
-
-        hsr = list(reversed(hsr))
-        csr = list(reversed(csr))
-        hsr = torch.stack(hsr, dim=0) #.permute(0, 2, 1, 3).reshape(max_seq_length, batch_size, -1)
-        csr = torch.stack(csr, dim=0) #.permute(0, 2, 1, 3).reshape(max_seq_length, batch_size, -1)
-
-        hs, cs = torch.cat([hsl, hsr], dim=-1), torch.cat([csl, csr], dim=-1)
-
-        return hs, cs
-
-
 class AttentionLayer(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self):
         super().__init__()
         self.attention_map = None
 
@@ -96,13 +52,13 @@ class AttentionLayer(nn.Module):
             output_value: tensor of size batch_size x input_size
         """
 
-        attention_logits = torch.bmm(queries, keys.permute(dims=(0, 2, 1))) # batch_size x out_seq_length x in_seq_length
+        attention_logits = torch.bmm(queries, keys.permute(dims=(0, 2, 1)))  # batch_size x out_seq_length x in_seq_length
         # use masking here
         if mask is not None:
             mask = mask.unsqueeze(1)
             attention_logits = torch.where(mask, attention_logits, -torch.tensor(1e37))
         
-        self.attention_map = torch.softmax(attention_logits, dim=-1) # batch_size x out_seq_length x in_seq_length
+        self.attention_map = torch.softmax(attention_logits, dim=-1)  # batch_size x out_seq_length x in_seq_length
         outputs = torch.bmm(self.attention_map, values) # batch_size x out_seq_length x input_size
 
         return outputs
@@ -119,11 +75,13 @@ class Encoder(nn.Module):
         self.letter_embedding = nn.Embedding(letter_tokens, emb_dim)
         self.guess_state_embedding = nn.Embedding(guess_tokens, emb_dim)
 
-        # self.rnn = nn.LSTM(emb_dim, hid_dim, batch_first=True, num_layers=2)
-        pos_emb_size = 8
-        self.rnn = LSTMLayerCustom(3 * emb_dim, hid_dim, num_layers=num_layers)
+        self.rnn = nn.LSTM(3 * emb_dim, hid_dim, num_layers, bidirectional=True, batch_first=True)
+
+        self.fc_hidden = nn.Linear(hid_dim * 2, hid_dim)
+        self.fc_cell = nn.Linear(hid_dim * 2, hid_dim)
+
         self.dropout = nn.Dropout(dropout)
-    
+
     def forward(self, letter_seq, state_seq):
 
         batch_size = letter_seq.shape[0]
@@ -137,41 +95,70 @@ class Encoder(nn.Module):
 
         input_embeddings = torch.cat([letters_embedded, states_embedded, pos_embedded], dim=-1)
 
-        # TODO: use pad token explicitly
-        # lengths = (letter_seq != 0).sum(axis=-1)
+        # embedding = self.dropout(self.embedding(x))
+        # embedding shape: (seq_length, N, embedding_size)
 
-        # input_embeddings = pack_padded_sequence(input_embeddings, lengths, batch_first=True, enforce_sorted=False)        
-        hidden, cell = self.rnn(input_embeddings)
-        
-        #hidden = [n layers * n directions, batch size, hid dim]
-        #cell = [n layers * n directions, batch size, hid dim]
-        
-        #outputs are always from the top hidden layer
-        
-        return hidden, cell
+        encoder_states, (hidden, cell) = self.rnn(input_embeddings)
+        # outputs shape: (seq_length, N, hidden_size)
+
+        # Use forward, backward cells and hidden through a linear layer
+        # so that it can be input to the decoder which is not bidirectional
+        # Also using index slicing ([idx:idx+1]) to keep the dimension
+        hidden = self.fc_hidden(torch.cat((hidden[0:1], hidden[1:2]), dim=2))
+        cell = self.fc_cell(torch.cat((cell[0:1], cell[1:2]), dim=2))
+
+        return encoder_states, hidden, cell
 
 
 class Decoder(nn.Module):
-    def __init__(self, output_dim, emb_dim, hid_dim, num_layers, dropout):
-        super().__init__()
-        
-        self.output_dim = output_dim
-        self.hid_dim = hid_dim
-        
-        self.embedding = nn.Embedding(output_dim, emb_dim)
-        # self.rnn = nn.LSTM(emb_dim, hid_dim, dropout=dropout, batch_first=True, num_layers=2)       
-        self.rnn = nn.LSTM(emb_dim, hid_dim, dropout=dropout, batch_first=True, num_layers=num_layers)
-        self.fc_out = nn.Linear(hid_dim, output_dim)
-        self.dropout = nn.Dropout(dropout)
-        
-    def forward(self, input, hidden, cell):
-        input = input.unsqueeze(1)
-        # embedded = self.dropout(self.embedding(input))
-        embedded = self.embedding(input)
-        output, (hidden, cell) = self.rnn(embedded, (hidden, cell))
-                
-        prediction = self.fc_out(output.squeeze(1))
-        return prediction, hidden, cell
+    def __init__(
+        self, input_size, embedding_size, hidden_size, output_size, num_layers, p
+    ):
+        super(Decoder, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+        self.embedding = nn.Embedding(input_size, embedding_size)
+        self.rnn = nn.LSTM(hidden_size * 2 + embedding_size, hidden_size, num_layers, batch_first=True)
+
+        self.energy = nn.Linear(hidden_size * 3, 1)
+        self.fc = nn.Linear(hidden_size, output_size)
+        self.dropout = nn.Dropout(p)
+        self.softmax = nn.Softmax(dim=0)
+        self.relu = nn.ReLU()
+
+    def forward(self, x, encoder_states, hidden, cell):
+        x = x.unsqueeze(1)
+        # x: (N, 1) where N is the batch size
+
+        embedding = self.dropout(self.embedding(x))
+        # embedding shape: (N, 1, embedding_size)
+
+        sequence_length = encoder_states.shape[1]
+        h_reshaped = hidden.repeat(sequence_length, 1, 1).permute(1, 0, 2)
+        # h_reshaped: (N, seq_length, hidden_size*2)
+
+        energy = self.relu(self.energy(torch.cat((h_reshaped, encoder_states), dim=2)))
+        # energy: (N, seq_length, 1)
+
+        attention = self.softmax(energy)
+        # attention: (N, seq_length, 1)
+
+        # attention: (N, seq_length, 1), snk
+        # encoder_states: (N, seq_length, hidden_size*2), snl
+        # we want context_vector: (N, 1, hidden_size*2), i.e knl
+        context_vector = torch.einsum("nsk,nsl->nkl", attention, encoder_states)
+
+        rnn_input = torch.cat((context_vector, embedding), dim=2)
+        # rnn_input: (N, 1, hidden_size*2 + embedding_size)
+
+        outputs, (hidden, cell) = self.rnn(rnn_input, (hidden, cell))
+        # outputs shape: (N, 1, hidden_size)
+
+        predictions = self.fc(outputs).squeeze(1)
+        # predictions: (N, output_size)
+
+        return predictions, hidden, cell
 
 
 class RNNAgent(nn.Module):
@@ -185,15 +172,12 @@ class RNNAgent(nn.Module):
         self.num_layers = num_layers
         self.output_len = output_len
 
-        # TODO: do not hardcode // 2
-        self.encoder = Encoder(letter_tokens, guess_tokens, emb_dim, hid_dim // 2, num_layers, dropout)
-        self.decoder = Decoder(output_dim, emb_dim, hid_dim, num_layers, dropout)
-        self.attention = AttentionLayer(hid_dim)
+        self.encoder = Encoder(letter_tokens, guess_tokens, emb_dim, hid_dim, num_layers, dropout)
+        self.decoder = Decoder(letter_tokens, emb_dim, hid_dim, output_dim, num_layers, dropout)
+        self.attention = AttentionLayer()
 
-        # TODO: do not hardcode * 2
         modules = [nn.Linear(hid_dim * num_layers, hid_dim), nn.ReLU(), nn.Linear(hid_dim, 1)]
         self.V_head = nn.Sequential(*modules)
-        # TODO: do not hardcode * 2
         self.logit_head = nn.Linear(hid_dim * num_layers, output_dim)
         
         self.letter_tokens = letter_tokens
@@ -222,19 +206,14 @@ class RNNAgent(nn.Module):
         batch_size = letter_seq.shape[0]
         logits = torch.zeros(batch_size, self.output_len + 1, self.letter_tokens)
 
-        encoder_hiddens, encoder_cells = self.encoder(letter_seq, state_seq)        
-        hidden, cell = encoder_hiddens.mean(dim=0), encoder_cells.mean(dim=0)
-        # hidden, cell = encoder_hiddens.mean(dim=0)[:, -1:, :], encoder_cells.mean(dim=0)[:, -1:, :]
-        # hidden, cell = hidden.permute(dims=(1, 0, 2)), cell.permute(dims=(1, 0, 2))
-        encoder_hiddens = encoder_hiddens.permute(2, 0, 1, 3).reshape(batch_size, maxlen, -1)
+        encoder_states, hidden, cell = self.encoder(letter_seq, state_seq)
 
         # compute V
         values = self.V_head(hidden.reshape(batch_size, -1))
 
         # first input to the decoder is the <sos> tokens
-        input = torch.full(size=(batch_size,), fill_value=self.sos_token)
+        x = torch.full(size=(batch_size,), fill_value=self.sos_token)
         
-        letter_mask = torch.full(size=(batch_size, self.letter_tokens), fill_value=True)
         word_mask = torch.full(size=(batch_size, self.game_voc_matrix.shape[0]), fill_value=True)
 
         # logits: (seq_length, batch_size, num_classes)
@@ -242,23 +221,19 @@ class RNNAgent(nn.Module):
         actions = torch.zeros(size=(batch_size, self.output_len), dtype=torch.long)
         log_probs = torch.zeros(size=(batch_size,))
         
-        if self.debug_mode:
-            fig, ax = plt.subplots(1, self.output_len)
+        # if self.debug_mode:
+        #     fig, ax = plt.subplots(1, self.output_len)
 
         for t in range(1, self.output_len + 1):
 
             # cur_logits: (batch_size, num_classes)
             # actions: (batch_size,)
-            _, hidden, cell = self.decoder(input, hidden, cell)
+            cur_logits, hidden, cell = self.decoder(x, encoder_states, hidden, cell)
+
+            # if self.debug_mode:
+            #     map_reshaped = self.attention.attention_map.squeeze().reshape(6, 6).detach().numpy()
+            #     ax[t - 1].imshow(map_reshaped)
             
-            decoder_hidden = hidden.permute(dims=(1, 0, 2)).reshape(batch_size, 1, -1)
-            attentive_hidden = self.attention(encoder_hiddens, decoder_hidden, encoder_hiddens, mask).squeeze(1)
-            
-            if self.debug_mode:
-                map_reshaped = self.attention.attention_map.squeeze().reshape(6, 6).detach().numpy()
-                ax[t - 1].imshow(map_reshaped)
-            
-            cur_logits = self.logit_head(attentive_hidden)
             logits[:, t, :] = cur_logits
             probs = F.softmax(cur_logits, dim=-1)
 
@@ -273,15 +248,13 @@ class RNNAgent(nn.Module):
             # keep which words are acceptable
             cur_log_probs = torch.log(probs[range(batch_size), actions_t].clip(min=1e-12)).squeeze()
 
-            # letters_allowed_count = allowed_letters.sum(axis=-1)
-            # log_probs[letters_allowed_count > 1] += cur_log_probs[letters_allowed_count > 1]
             log_probs += cur_log_probs
             
             actions[:, t-1] = actions_t
-            input = actions_t
+            x = actions_t
 
-        if self.debug_mode:
-            plt.show()
+        # if self.debug_mode:
+        #     plt.show()
 
         return {
             "actions": actions.cpu().numpy(),

@@ -17,6 +17,7 @@ EMBEDDING_DIM = 64
 # state: 2 x 6 x 5 (guess, is_right)
 class WordleEnv(gym.Env):
     def __init__(self, debug=False, reward_penalty_ratio=1.0):
+        super().__init__()
 
         self.debug = debug
         self.reward_penalty_ratio = reward_penalty_ratio
@@ -64,6 +65,9 @@ class WordleEnv(gym.Env):
                 self.game_ans_matrix[i, j] = self.tokenizer.letter2index[letter]
 
     def reset(self, seed: Optional[int] = None):
+
+        super().reset(seed=seed)
+
         if seed is not None:
             np.random.seed(seed)
 

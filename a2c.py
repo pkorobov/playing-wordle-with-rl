@@ -4,6 +4,7 @@ import torch
 
 
 DEVICE = torch.device('cpu')
+# DEVICE = torch.device('cuda')
 
 
 class A2C:

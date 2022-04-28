@@ -30,8 +30,8 @@ if __name__ == "__main__":
     policy = RNNAgent(
         letter_tokens=len(tokenizer.index2letter),
         guess_tokens=len(tokenizer.index2guess_state),
-        emb_dim=32,
-        hid_dim=128,
+        emb_dim=16,
+        hid_dim=64,
         num_layers=1,
         output_dim=len(tokenizer.index2letter),
         output_len=5,
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     runner = EnvRunner(env, policy, nsteps=nsteps, transforms=[ComputeValueTargets(policy),
                                                                MergeTimeBatch()])
     optimizer = RMSprop(policy.parameters(), 7e-4)
-    a2c = A2C(policy, optimizer, max_grad_norm=1.0)
+    a2c = A2C(policy, optimizer, max_grad_norm=10.0)
 
     total_steps = 10 ** 6
 
