@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torch.distributions import Categorical
 
-
+from a2c import DEVICE
 num_letters = 29
 
 
@@ -37,33 +37,6 @@ def get_allowed_letters(word_matrix, word_mask, position):
     return letter_mask
 
 
-class AttentionLayer(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.attention_map = None
-
-    def forward(self, keys, queries, values, mask=None):
-        """
-        Input:
-            keys: tensor of size batch_size x in_seq_length x input_size
-            queries: tensor of size batch_size x out_seq_length x input_size (out_seq_length = 1 in our case)
-            values: tensor of size batch_size x in_seq_length x input_size
-        Output:
-            output_value: tensor of size batch_size x input_size
-        """
-
-        attention_logits = torch.bmm(queries, keys.permute(dims=(0, 2, 1)))  # batch_size x out_seq_length x in_seq_length
-        # use masking here
-        if mask is not None:
-            mask = mask.unsqueeze(1)
-            attention_logits = torch.where(mask, attention_logits, -torch.tensor(1e37))
-        
-        self.attention_map = torch.softmax(attention_logits, dim=-1)  # batch_size x out_seq_length x in_seq_length
-        outputs = torch.bmm(self.attention_map, values) # batch_size x out_seq_length x input_size
-
-        return outputs
-
-
 class Encoder(nn.Module):
     def __init__(self, letter_tokens, guess_tokens, emb_dim, hid_dim, num_layers, dropout, max_pos=6, pad_token=0):
         super().__init__()
@@ -89,7 +62,9 @@ class Encoder(nn.Module):
         # letters_embedded = self.dropout(self.letter_embedding(letter_seq))
         # states_embedded = self.dropout(self.guess_state_embedding(state_seq))
 
-        pos_embedded = self.pos_embedding(torch.arange(self.max_pos).reshape(1, -1)).repeat((batch_size, self.max_pos, 1))
+        pos_embedded = self.pos_embedding(
+                            torch.arange(self.max_pos).reshape(1, -1).to(DEVICE)
+                        ).repeat((batch_size, self.max_pos, 1))
         letters_embedded = self.letter_embedding(letter_seq)
         states_embedded = self.guess_state_embedding(state_seq)
 
@@ -112,7 +87,7 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(
-        self, input_size, embedding_size, hidden_size, output_size, num_layers, p
+        self, input_size, embedding_size, hidden_size, output_size, num_layers, dropout
     ):
         super(Decoder, self).__init__()
         self.hidden_size = hidden_size
@@ -123,11 +98,12 @@ class Decoder(nn.Module):
 
         self.energy = nn.Linear(hidden_size * 3, 1)
         self.fc = nn.Linear(hidden_size, output_size)
-        self.dropout = nn.Dropout(p)
-        self.softmax = nn.Softmax(dim=0)
+        self.dropout = nn.Dropout(dropout)
+        self.softmax = nn.Softmax(dim=1)
         self.relu = nn.ReLU()
+        self.attention = None
 
-    def forward(self, x, encoder_states, hidden, cell):
+    def forward(self, x, encoder_states, hidden, cell, attention_mask=None):
         x = x.unsqueeze(1)
         # x: (N, 1) where N is the batch size
 
@@ -141,13 +117,19 @@ class Decoder(nn.Module):
         energy = self.relu(self.energy(torch.cat((h_reshaped, encoder_states), dim=2)))
         # energy: (N, seq_length, 1)
 
-        attention = self.softmax(energy)
+        if attention_mask is not None:
+            # TODO: возможно: стоит убрать sos токены из attention
+            # attention_mask: (N, seq_length)
+            attention_mask = attention_mask.unsqueeze(-1)
+            energy = torch.where(attention_mask, energy, -torch.tensor(1e37).to(DEVICE))
+
+        self.attention = self.softmax(energy)
         # attention: (N, seq_length, 1)
 
         # attention: (N, seq_length, 1), snk
         # encoder_states: (N, seq_length, hidden_size*2), snl
         # we want context_vector: (N, 1, hidden_size*2), i.e knl
-        context_vector = torch.einsum("nsk,nsl->nkl", attention, encoder_states)
+        context_vector = torch.einsum("nsk,nsl->nkl", self.attention, encoder_states)
 
         rnn_input = torch.cat((context_vector, embedding), dim=2)
         # rnn_input: (N, 1, hidden_size*2 + embedding_size)
@@ -174,7 +156,6 @@ class RNNAgent(nn.Module):
 
         self.encoder = Encoder(letter_tokens, guess_tokens, emb_dim, hid_dim, num_layers, dropout)
         self.decoder = Decoder(letter_tokens, emb_dim, hid_dim, output_dim, num_layers, dropout)
-        self.attention = AttentionLayer()
 
         modules = [nn.Linear(hid_dim * num_layers, hid_dim), nn.ReLU(), nn.Linear(hid_dim, 1)]
         self.V_head = nn.Sequential(*modules)
@@ -193,14 +174,14 @@ class RNNAgent(nn.Module):
             inputs:
                 letter_seq: (batch_size x sequence_length)
                 state_seq: (batch_size x sequence_length)
-                
+
             outputs:
                 
         """
         
         maxlen = letter_seq.shape[1]
         lengths = (letter_seq != 0).sum(axis=-1)
-        mask = (torch.arange(maxlen)[None, :] < lengths[:, None]).bool()
+        attention_mask = (torch.arange(maxlen)[None, :].to(DEVICE) < lengths[:, None]).bool()
 
         # tensor to store decoder outputs
         batch_size = letter_seq.shape[0]
@@ -212,49 +193,49 @@ class RNNAgent(nn.Module):
         values = self.V_head(hidden.reshape(batch_size, -1))
 
         # first input to the decoder is the <sos> tokens
-        x = torch.full(size=(batch_size,), fill_value=self.sos_token)
+        x = torch.full(size=(batch_size,), fill_value=self.sos_token).to(DEVICE)
         
         word_mask = torch.full(size=(batch_size, self.game_voc_matrix.shape[0]), fill_value=True)
 
         # logits: (seq_length, batch_size, num_classes)
         
-        actions = torch.zeros(size=(batch_size, self.output_len), dtype=torch.long)
-        log_probs = torch.zeros(size=(batch_size,))
+        actions = torch.zeros(size=(batch_size, self.output_len), dtype=torch.long, device=DEVICE)
+        log_probs = torch.zeros(size=(batch_size,), device=DEVICE)
         
-        # if self.debug_mode:
-        #     fig, ax = plt.subplots(1, self.output_len)
+        if self.debug_mode:
+            fig, ax = plt.subplots(1, self.output_len)
 
         for t in range(1, self.output_len + 1):
 
             # cur_logits: (batch_size, num_classes)
             # actions: (batch_size,)
-            cur_logits, hidden, cell = self.decoder(x, encoder_states, hidden, cell)
+            cur_logits, hidden, cell = self.decoder(x, encoder_states, hidden, cell, attention_mask)
 
-            # if self.debug_mode:
-            #     map_reshaped = self.attention.attention_map.squeeze().reshape(6, 6).detach().numpy()
-            #     ax[t - 1].imshow(map_reshaped)
+            if self.debug_mode:
+                map_reshaped = self.decoder.attention.squeeze().reshape(6, 6).detach().numpy()
+                ax[t - 1].imshow(map_reshaped)
             
             logits[:, t, :] = cur_logits
             probs = F.softmax(cur_logits, dim=-1)
 
-            allowed_letters = get_allowed_letters(self.game_voc_matrix, word_mask, t-1)
-            probs = torch.where(allowed_letters, probs, torch.zeros_like(probs))
+            allowed_letters = get_allowed_letters(self.game_voc_matrix, word_mask, t-1).to(DEVICE)
+            probs = torch.where(allowed_letters, probs, torch.zeros_like(probs).to(DEVICE))
             probs = probs / probs.sum(dim=-1, keepdim=True)
             # torch.where(<your_tensor> != 0, <tensor with zeroz>, <tensor with the value>)
             actions_t = Categorical(probs=probs).sample()
             
-            word_mask = word_mask & (self.game_voc_matrix[:, t - 1].unsqueeze(0) == actions_t.unsqueeze(1))
+            word_mask = word_mask & (self.game_voc_matrix[:, t - 1].unsqueeze(0) == actions_t.unsqueeze(1).cpu())
 
             # keep which words are acceptable
-            cur_log_probs = torch.log(probs[range(batch_size), actions_t].clip(min=1e-12)).squeeze()
+            cur_log_probs = torch.log(probs[torch.arange(batch_size), actions_t].clip(min=1e-12)).squeeze()
 
             log_probs += cur_log_probs
             
             actions[:, t-1] = actions_t
             x = actions_t
 
-        # if self.debug_mode:
-        #     plt.show()
+        if self.debug_mode:
+            plt.show()
 
         return {
             "actions": actions.cpu().numpy(),
@@ -272,7 +253,7 @@ class RNNAgent(nn.Module):
             'log_probs' - log probs of selected actions, tensor, (batch_size)
             'values' - critic estimations, tensor, (batch_size)
         '''
-        inputs = torch.LongTensor(inputs)
+        inputs = torch.LongTensor(inputs).to(DEVICE)
         letter_tokens, state_tokens = inputs[:, 0, :], inputs[:, 1, :]
         outputs = self(letter_tokens, state_tokens)
         return outputs

@@ -3,13 +3,13 @@ from torch.nn.utils import clip_grad_norm_
 import torch
 
 
-DEVICE = torch.device('cpu')
-# DEVICE = torch.device('cuda')
+# DEVICE = torch.device('cpu')
+DEVICE = torch.device('cuda')
 
 
 class A2C:
     def __init__(self, policy, optimizer, value_loss_coef=0.25, entropy_coef=0.01, max_grad_norm=0.5):
-        self.policy = policy
+        self.policy = policy.to(DEVICE)
         self.optimizer = optimizer
         self.value_loss_coef = value_loss_coef
         self.entropy_coef = entropy_coef

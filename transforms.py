@@ -1,7 +1,5 @@
 import torch
-
-
-DEVICE = torch.device('cpu')
+from a2c import DEVICE
 
 
 class ComputeValueTargets:
