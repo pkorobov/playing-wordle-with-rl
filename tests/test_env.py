@@ -16,7 +16,7 @@ from run_experiment import main
 
 def test_one_deterministic():
     """
-    This test checks if seed fixation really works.
+    Test if seed fixation really works.
     """
 
     def get_trajectory_words(steps):
@@ -37,6 +37,9 @@ def test_one_deterministic():
 
 
 def test_parallel_deterministic():
+    """
+    Test if training results are reproducable.
+    """
     a2c1 = main(100, 1000)
     a2c2 = main(100, 1000)
 
