@@ -5,7 +5,8 @@ import os
 import gym
 from gym import spaces
 
-from tokenizer import Tokenizer
+from wordle_rl.tokenizer import Tokenizer
+from gym.utils import seeding
 
 
 DEBUG_GAME_VOCABULARY = DEBUG_GAME_ANSWERS = ["sword", "crane", "plate"]
@@ -68,7 +69,11 @@ class WordleEnv(gym.Env):
 
         super().reset(seed=seed, **kwargs)
 
-        word_idx = self._np_random.randint(len(self.game_ans_matrix))
+        if self._np_random is not None:
+            word_idx = self._np_random.randint(len(self.game_ans_matrix))
+        else:
+            word_idx = np.random.randint(len(self.game_ans_matrix))
+
         self.word = self.game_ans_matrix[word_idx]
 
         self.num_tries = 0

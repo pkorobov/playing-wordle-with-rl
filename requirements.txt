@@ -1,6 +1,7 @@
 gym==0.22.0
 jupyterlab==3.3.4
 matplotlib==3.5.1
+pytest==7.1.2
 tensorboard==2.8.0
 tensorboardX==2.5
 torch==1.11.0

@@ -4,8 +4,8 @@ from multiprocessing import Process, Pipe
 from gym import Env, Wrapper, Space
 import numpy as np
 
-from wordle_env import WORD_LENGTH
-from tokenizer import Tokenizer
+from wordle_rl.wordle_env import WORD_LENGTH
+from wordle_rl.tokenizer import Tokenizer
 
 # Uncomment for debug
 # import multiprocessing

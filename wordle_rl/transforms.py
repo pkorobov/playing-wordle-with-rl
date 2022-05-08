@@ -1,5 +1,5 @@
 import torch
-from a2c import DEVICE
+from wordle_rl.a2c import DEVICE
 
 
 class ComputeValueTargets:

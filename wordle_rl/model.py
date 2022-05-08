@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torch.distributions import Categorical
 
-from a2c import DEVICE
+from wordle_rl.a2c import DEVICE
 num_letters = 29
 
 
