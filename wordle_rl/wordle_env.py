@@ -43,7 +43,7 @@ class WordleEnv(gym.Env):
         assert self.tokenizer is not None
 
         if not self.debug:
-            with open('data/allowed_words.txt', 'r') as f:
+            with open('../data/allowed_words.txt', 'r') as f:
                 game_vocabulary = f.read().split()
         else:
             game_vocabulary = DEBUG_GAME_VOCABULARY
@@ -54,7 +54,7 @@ class WordleEnv(gym.Env):
                 self.game_voc_matrix[i, j] = self.tokenizer.letter2index[letter]
 
         if not self.debug:
-            with open('data/possible_words.txt', 'r') as f:
+            with open('../data/possible_words.txt', 'r') as f:
                 game_answers = f.read().split()
         else:
             game_answers = DEBUG_GAME_ANSWERS

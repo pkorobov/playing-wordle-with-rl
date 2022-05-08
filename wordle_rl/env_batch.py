@@ -229,7 +229,7 @@ class WordleParallelEnvBatch(ParallelEnvBatch):
         assert self.tokenizer is not None
 
         if not self.debug:
-            with open('data/allowed_words.txt', 'r') as f:
+            with open('../data/allowed_words.txt', 'r') as f:
                 game_vocabulary = f.read().split()
         else:
             game_vocabulary = DEBUG_GAME_VOCABULARY

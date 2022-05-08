@@ -1,18 +1,14 @@
-import numpy as np
-from wordle_env import WordleEnv
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import RMSprop
 
-from model import RNNAgent, get_allowed_letters
-from wrappers import nature_dqn_env
-from runners import EnvRunner
+from wordle_rl.model import RNNAgent
+from wordle_rl.wrappers import nature_dqn_env
+from wordle_rl.runners import EnvRunner
 
-from transforms import ComputeValueTargets, MergeTimeBatch
-from a2c import A2C
+from wordle_rl.transforms import ComputeValueTargets, MergeTimeBatch
+from wordle_rl.a2c import A2C
 from tqdm import trange
-from tokenizer import Tokenizer
+from wordle_rl.tokenizer import Tokenizer
 
 
 # torch.autograd.set_detect_anomaly(True)
