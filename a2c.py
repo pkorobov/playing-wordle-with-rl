@@ -24,9 +24,7 @@ class A2C:
         log_probs = trajectory['log_probs'].to(DEVICE)
         value_loss = (targets - values).pow(2).mean()
 
-        # TODO: recompute
-        entropy_loss = 0.0  # (log_probs * torch.exp(log_probs)).mean()
-
+        entropy_loss = log_probs.mean()
         advantage = (targets - values).detach()
         policy_loss = -(log_probs * advantage).mean()
 

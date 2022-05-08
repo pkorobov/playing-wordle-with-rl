@@ -96,8 +96,9 @@ class Decoder(nn.Module):
         self.embedding = nn.Embedding(input_size, embedding_size)
         self.rnn = nn.LSTM(hidden_size * 2 + embedding_size, hidden_size, num_layers, batch_first=True)
 
-        self.energy = nn.Linear(hidden_size * 3, 1)
-        self.fc = nn.Linear(hidden_size, output_size)
+        # self.energy = nn.Linear(hidden_size * 3, 1)
+        self.energy = nn.Sequential(nn.Linear(hidden_size * 3, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1))
+        self.fc = nn.Linear(hidden_size * 3, output_size)
         self.dropout = nn.Dropout(dropout)
         self.softmax = nn.Softmax(dim=1)
         self.relu = nn.ReLU()
@@ -114,7 +115,7 @@ class Decoder(nn.Module):
         h_reshaped = hidden.repeat(sequence_length, 1, 1).permute(1, 0, 2)
         # h_reshaped: (N, seq_length, hidden_size*2)
 
-        energy = self.relu(self.energy(torch.cat((h_reshaped, encoder_states), dim=2)))
+        energy = self.energy(torch.cat((h_reshaped, encoder_states), dim=2))
         # energy: (N, seq_length, 1)
 
         if attention_mask is not None:
@@ -137,7 +138,10 @@ class Decoder(nn.Module):
         outputs, (hidden, cell) = self.rnn(rnn_input, (hidden, cell))
         # outputs shape: (N, 1, hidden_size)
 
-        predictions = self.fc(outputs).squeeze(1)
+        fc_input = torch.cat([outputs, context_vector], dim=-1)
+        # outputs shape: (N, 1, hidden_size*3)
+
+        predictions = self.fc(fc_input).squeeze(1)
         # predictions: (N, output_size)
 
         return predictions, hidden, cell
@@ -145,7 +149,7 @@ class Decoder(nn.Module):
 
 class RNNAgent(nn.Module):
     def __init__(self, letter_tokens, guess_tokens, emb_dim, hid_dim, output_dim,
-                 game_voc_matrix, num_layers, output_len, sos_token, dropout=0.2):
+                 game_voc_matrix, num_layers, output_len=5, sos_token=1, dropout=0.2):
         super().__init__()
 
         self.emb_dim = emb_dim
@@ -185,7 +189,7 @@ class RNNAgent(nn.Module):
 
         # tensor to store decoder outputs
         batch_size = letter_seq.shape[0]
-        logits = torch.zeros(batch_size, self.output_len + 1, self.letter_tokens)
+        logits = torch.zeros(batch_size, self.output_len, self.letter_tokens)
 
         encoder_states, hidden, cell = self.encoder(letter_seq, state_seq)
 
@@ -205,33 +209,33 @@ class RNNAgent(nn.Module):
         if self.debug_mode:
             fig, ax = plt.subplots(1, self.output_len)
 
-        for t in range(1, self.output_len + 1):
+        for t in range(self.output_len):
 
             # cur_logits: (batch_size, num_classes)
             # actions: (batch_size,)
             cur_logits, hidden, cell = self.decoder(x, encoder_states, hidden, cell, attention_mask)
 
             if self.debug_mode:
-                map_reshaped = self.decoder.attention.squeeze().reshape(6, 6).detach().numpy()
-                ax[t - 1].imshow(map_reshaped)
+                map_reshaped = self.decoder.attention.squeeze().reshape(6, 6).cpu().detach().numpy()
+                ax[t].imshow(map_reshaped)
             
             logits[:, t, :] = cur_logits
             probs = F.softmax(cur_logits, dim=-1)
 
-            allowed_letters = get_allowed_letters(self.game_voc_matrix, word_mask, t-1).to(DEVICE)
+            allowed_letters = get_allowed_letters(self.game_voc_matrix, word_mask, t).to(DEVICE)
             probs = torch.where(allowed_letters, probs, torch.zeros_like(probs).to(DEVICE))
             probs = probs / probs.sum(dim=-1, keepdim=True)
             # torch.where(<your_tensor> != 0, <tensor with zeroz>, <tensor with the value>)
             actions_t = Categorical(probs=probs).sample()
             
-            word_mask = word_mask & (self.game_voc_matrix[:, t - 1].unsqueeze(0) == actions_t.unsqueeze(1).cpu())
+            word_mask = word_mask & (self.game_voc_matrix[:, t].unsqueeze(0) == actions_t.unsqueeze(1).cpu())
 
             # keep which words are acceptable
             cur_log_probs = torch.log(probs[torch.arange(batch_size), actions_t].clip(min=1e-12)).squeeze()
 
             log_probs += cur_log_probs
             
-            actions[:, t-1] = actions_t
+            actions[:, t] = actions_t
             x = actions_t
 
         if self.debug_mode:

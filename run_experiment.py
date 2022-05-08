@@ -16,11 +16,12 @@ from tokenizer import Tokenizer
 
 
 # torch.autograd.set_detect_anomaly(True)
+torch.backends.cudnn.benchmark = True
 
 
 if __name__ == "__main__":
 
-    nenvs = 12
+    nenvs = 6
     nsteps = 32
 
     env = nature_dqn_env(nenvs=nenvs)
@@ -46,9 +47,9 @@ if __name__ == "__main__":
                                                                MergeTimeBatch()])
     # optimizer = RMSprop(policy.parameters(), 5e-3)
     optimizer = RMSprop(policy.parameters(), 7e-4)
-    a2c = A2C(policy, optimizer, max_grad_norm=50.0)
+    a2c = A2C(policy, optimizer,  entropy_coef=0.1, max_grad_norm=50.0)
 
-    total_steps = 2 * 10 ** 7
+    total_steps = 3 * 10 ** 7
 
     env.reset()
     for step in trange(0, total_steps + 1, nenvs * nsteps):
