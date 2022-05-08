@@ -64,14 +64,11 @@ class WordleEnv(gym.Env):
             for j, letter in enumerate(game_answers[i]):
                 self.game_ans_matrix[i, j] = self.tokenizer.letter2index[letter]
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self, seed: Optional[int] = None, **kwargs):
 
-        super().reset(seed=seed)
+        super().reset(seed=seed, **kwargs)
 
-        if seed is not None:
-            np.random.seed(seed)
-
-        word_idx = np.random.randint(len(self.game_ans_matrix))
+        word_idx = self._np_random.randint(len(self.game_ans_matrix))
         self.word = self.game_ans_matrix[word_idx]
 
         self.num_tries = 0
