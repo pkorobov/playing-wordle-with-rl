@@ -3,6 +3,9 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torch.distributions import Categorical
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pad_packed_sequence
+
 
 from wordle_rl.a2c import DEVICE
 num_letters = 29
@@ -55,9 +58,10 @@ class Encoder(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, letter_seq, state_seq):
+    def forward(self, letter_seq, state_seq, lengths):
 
         batch_size = letter_seq.shape[0]
+        seq_length = letter_seq.shape[1]
 
         # letters_embedded = self.dropout(self.letter_embedding(letter_seq))
         # states_embedded = self.dropout(self.guess_state_embedding(state_seq))
@@ -73,7 +77,9 @@ class Encoder(nn.Module):
         # embedding = self.dropout(self.embedding(x))
         # embedding shape: (seq_length, N, embedding_size)
 
+        input_embeddings = pack_padded_sequence(input_embeddings, lengths.cpu(), batch_first=True, enforce_sorted=False)
         encoder_states, (hidden, cell) = self.rnn(input_embeddings)
+        encoder_states, _ = pad_packed_sequence(encoder_states, batch_first=True, total_length=seq_length)
         # outputs shape: (seq_length, N, hidden_size)
 
         # Use forward, backward cells and hidden through a linear layer
@@ -191,7 +197,7 @@ class RNNAgent(nn.Module):
         batch_size = letter_seq.shape[0]
         logits = torch.zeros(batch_size, self.output_len, self.letter_tokens)
 
-        encoder_states, hidden, cell = self.encoder(letter_seq, state_seq)
+        encoder_states, hidden, cell = self.encoder(letter_seq, state_seq, lengths)
 
         # compute V
         values = self.V_head(hidden.reshape(batch_size, -1))

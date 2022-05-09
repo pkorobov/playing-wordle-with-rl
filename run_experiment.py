@@ -68,8 +68,8 @@ def main(base_seed, total_steps):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument('--seed', type=int)
-    parser.add_argument('--total_steps', 10 ** 7, type=int)
+    parser.add_argument('--seed', type=int, default=100)
+    parser.add_argument('--total_steps', type=int, default=10 ** 7)
     args = parser.parse_args()
 
     main(base_seed=args.seed, total_steps=args.total_steps)
