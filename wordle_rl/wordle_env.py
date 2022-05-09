@@ -5,7 +5,8 @@ import os
 import gym
 from gym import spaces
 
-from tokenizer import Tokenizer
+from wordle_rl.tokenizer import Tokenizer
+from gym.utils import seeding
 
 
 DEBUG_GAME_VOCABULARY = DEBUG_GAME_ANSWERS = ["sword", "crane", "plate"]
@@ -17,6 +18,7 @@ EMBEDDING_DIM = 64
 # state: 2 x 6 x 5 (guess, is_right)
 class WordleEnv(gym.Env):
     def __init__(self, debug=False, reward_penalty_ratio=1.0):
+        super().__init__()
 
         self.debug = debug
         self.reward_penalty_ratio = reward_penalty_ratio
@@ -42,7 +44,7 @@ class WordleEnv(gym.Env):
         assert self.tokenizer is not None
 
         if not self.debug:
-            with open('data/allowed_words.txt', 'r') as f:
+            with open('../data/allowed_words.txt', 'r') as f:
                 game_vocabulary = f.read().split()
         else:
             game_vocabulary = DEBUG_GAME_VOCABULARY
@@ -53,7 +55,7 @@ class WordleEnv(gym.Env):
                 self.game_voc_matrix[i, j] = self.tokenizer.letter2index[letter]
 
         if not self.debug:
-            with open('data/possible_words.txt', 'r') as f:
+            with open('../data/possible_words.txt', 'r') as f:
                 game_answers = f.read().split()
         else:
             game_answers = DEBUG_GAME_ANSWERS
@@ -63,11 +65,15 @@ class WordleEnv(gym.Env):
             for j, letter in enumerate(game_answers[i]):
                 self.game_ans_matrix[i, j] = self.tokenizer.letter2index[letter]
 
-    def reset(self, seed: Optional[int] = None):
-        if seed is not None:
-            np.random.seed(seed)
+    def reset(self, seed: Optional[int] = None, **kwargs):
 
-        word_idx = np.random.randint(len(self.game_ans_matrix))
+        super().reset(seed=seed, **kwargs)
+
+        if self._np_random is not None:
+            word_idx = self._np_random.randint(len(self.game_ans_matrix))
+        else:
+            word_idx = np.random.randint(len(self.game_ans_matrix))
+
         self.word = self.game_ans_matrix[word_idx]
 
         self.num_tries = 0

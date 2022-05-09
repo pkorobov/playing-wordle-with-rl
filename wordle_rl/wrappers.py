@@ -6,11 +6,11 @@ import numpy as np
 
 import gym
 import gym.spaces as spaces
-from wordle_env import WordleEnv
+from wordle_rl.wordle_env import WordleEnv
 from gym.wrappers import Monitor
 from tensorboardX import SummaryWriter
 
-from env_batch import ParallelEnvBatch, WordleParallelEnvBatch
+from wordle_rl.env_batch import ParallelEnvBatch, WordleParallelEnvBatch
 
 
 class SequenceWrapper(gym.Wrapper):

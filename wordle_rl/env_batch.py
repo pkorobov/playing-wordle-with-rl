@@ -4,8 +4,8 @@ from multiprocessing import Process, Pipe
 from gym import Env, Wrapper, Space
 import numpy as np
 
-from wordle_env import WORD_LENGTH
-from tokenizer import Tokenizer
+from wordle_rl.wordle_env import WORD_LENGTH
+from wordle_rl.tokenizer import Tokenizer
 
 # Uncomment for debug
 # import multiprocessing
@@ -229,7 +229,7 @@ class WordleParallelEnvBatch(ParallelEnvBatch):
         assert self.tokenizer is not None
 
         if not self.debug:
-            with open('data/allowed_words.txt', 'r') as f:
+            with open('../data/allowed_words.txt', 'r') as f:
                 game_vocabulary = f.read().split()
         else:
             game_vocabulary = DEBUG_GAME_VOCABULARY

@@ -1,7 +1,5 @@
 import torch
-
-
-DEVICE = torch.device('cpu')
+from wordle_rl.a2c import DEVICE
 
 
 class ComputeValueTargets:
