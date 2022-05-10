@@ -103,7 +103,7 @@ class WordleEnv(gym.Env):
                 pattern[i] = self.tokenizer.guess_state2index['<CONTAINED>']  # MISPLACED
                 equality_grid[:, j] = False
                 equality_grid[i, :] = False
-        return pattern, equality_grid
+        return pattern, green_matches
 
     def step(self, action: np.ndarray):
         """
@@ -126,13 +126,12 @@ class WordleEnv(gym.Env):
 
         info = dict()
 
-        self.is_right[self.num_tries, :], eq_grid = self.compute_pattern(action)
+        self.is_right[self.num_tries, :], green_matches = self.compute_pattern(action)
         self.guess[self.num_tries, :] = action
 
-        green_matches = np.diag(eq_grid)
         reward, done = green_matches.sum() / WORD_LENGTH, False
         reward *= self.reward_penalty_ratio
-        
+
         if self.num_tries > 0:
             reward -= (
                 (self.guess[:self.num_tries] == action) & 
