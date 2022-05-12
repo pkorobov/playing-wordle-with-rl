@@ -86,6 +86,25 @@ class WordleEnv(gym.Env):
         obs = np.stack([self.guess, self.is_right])
         return obs
 
+    def compute_pattern(self, action: np.ndarray):
+        equality_grid = np.equal.outer(action, self.word)
+        pattern = np.full((WORD_LENGTH,), fill_value=self.tokenizer.guess_state2index['<MISS>'])
+
+        # Green pass
+        green_matches = np.diag(equality_grid).copy()
+        pattern[green_matches] = self.tokenizer.guess_state2index['<RIGHT>']  # right
+        equality_grid[green_matches, :] = False
+        equality_grid[:, green_matches] = False
+
+        # Yellow pass
+        idx = np.argwhere(equality_grid == True)
+        for i, j in idx:
+            if equality_grid[i, j]:
+                pattern[i] = self.tokenizer.guess_state2index['<CONTAINED>']  # MISPLACED
+                equality_grid[:, j] = False
+                equality_grid[i, :] = False
+        return pattern, green_matches
+
     def step(self, action: np.ndarray):
         """
         Run one timestep of the environment's dynamics. When end of
@@ -107,25 +126,20 @@ class WordleEnv(gym.Env):
 
         info = dict()
 
-        self.is_right[self.num_tries, :] = self.tokenizer.guess_state2index['<MISS>']  # not right
-        is_in = np.isin(self.word, action)
-        self.is_right[self.num_tries, is_in] = self.tokenizer.guess_state2index['<CONTAINED>']  # semi-right
-        right_mask = (action == self.word)
-        self.is_right[self.num_tries, right_mask] = self.tokenizer.guess_state2index['<RIGHT>']  # right
-
+        self.is_right[self.num_tries, :], green_matches = self.compute_pattern(action)
         self.guess[self.num_tries, :] = action
 
-        reward, done = right_mask.sum() / WORD_LENGTH, False
+        reward, done = green_matches.sum() / WORD_LENGTH, False
         reward *= self.reward_penalty_ratio
-        
+
         if self.num_tries > 0:
             reward -= (
                 (self.guess[:self.num_tries] == action) & 
                 (self.is_right[:self.num_tries] == self.tokenizer.guess_state2index['<MISS>'])
             ).any(axis=0).sum() / WORD_LENGTH
 
-        if right_mask.all() or self.num_tries == MAX_TRIES - 1:
-            if right_mask.all():
+        if green_matches.all() or self.num_tries == MAX_TRIES - 1:
+            if green_matches.all():
                 reward = 10.0
             done = True
             obs = self.reset()
@@ -154,18 +168,17 @@ class WordleEnv(gym.Env):
 
 if __name__ == "__main__":
     import time
+    from wordle_rl.tokenizer import Tokenizer
 
-    from wrappers import nature_dqn_env
-    nenvs = 2
-    env = nature_dqn_env(nenvs=nenvs)
+    env = WordleEnv()
+    tokenizer = Tokenizer()
+    # env.word = np.array([tokenizer.letter2index[c] for c in "zesty"])
+    print([tokenizer.index2letter[c] for c in env.word])
 
     while True:
-
-        # print("Choose your word...")
-        # a = input()
-
-        a = np.array([5, 5, 5, 5, 5])
-        obs, reward, done, info = env.step(a.reshape(1, -1).repeat(nenvs, axis=0))
-        # print(obs)
+        # you can play here with env on your own
+        a = input()
+        a = np.array([tokenizer.letter2index[c] for c in a])
+        obs, reward, done, info = env.step(a.reshape(1, -1))
+        env.render()
         time.sleep(0.5)
-        # sim.render()
