@@ -166,7 +166,7 @@ class _thunk:
         return nature_dqn_env(seed=self.env_seed, summaries=False, **self.kwargs)
 
 
-def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False):
+def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, logdir="wordle"):
     """ Wraps env as in Nature DQN paper and creates parallel actors. """
     if nenvs is not None:
         if seed is None:
@@ -181,7 +181,7 @@ def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False):
         env = WordleParallelEnvBatch(thunks)
 
         if summaries:
-            env = TensorboardSummaries(env, prefix="wordle")
+            env = TensorboardSummaries(env, prefix=logdir)
         return env
 
     env = WordleEnv()

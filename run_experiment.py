@@ -25,14 +25,14 @@ def fix_seed(seed):
         torch.backends.cudnn.benchmark = False
 
 
-def main(base_seed, total_steps):
+def main(base_seed, total_steps, hid_dim, emb_dim, entropy_coef, logdir):
     nenvs = 6
     nsteps = 32
 
     assert base_seed >= nenvs
 
     fix_seed(base_seed)
-    env = nature_dqn_env(nenvs=nenvs, seed=[i + base_seed for i in range(nenvs)])
+    env = nature_dqn_env(nenvs=nenvs, seed=[i + base_seed for i in range(nenvs)], logdir=logdir)
     game_voc_matrix = torch.FloatTensor(env.game_voc_matrix)
 
     obs = env.reset()
@@ -42,8 +42,8 @@ def main(base_seed, total_steps):
     policy = RNNAgent(
         letter_tokens=len(tokenizer.index2letter),
         guess_tokens=len(tokenizer.index2guess_state),
-        emb_dim=16,
-        hid_dim=64,
+        emb_dim=emb_dim,
+        hid_dim=hid_dim,
         num_layers=1,
         output_dim=len(tokenizer.index2letter),
         output_len=5,
@@ -55,7 +55,7 @@ def main(base_seed, total_steps):
                                                                MergeTimeBatch()])
     # optimizer = RMSprop(policy.parameters(), 5e-3)
     optimizer = RMSprop(policy.parameters(), 7e-4)
-    a2c = A2C(policy, optimizer,  entropy_coef=0.1, max_grad_norm=50.0)
+    a2c = A2C(policy, optimizer,  entropy_coef=entropy_coef, max_grad_norm=50.0)
 
     env.reset()
     for step in trange(0, total_steps + 1, nenvs * nsteps):
@@ -69,7 +69,18 @@ def main(base_seed, total_steps):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--seed', type=int, default=100)
-    parser.add_argument('--total_steps', type=int, default=10 ** 7)
+    parser.add_argument('--total_steps', type=int, default=3 * 10 ** 7)
+    parser.add_argument('--logdir', type=str, default="wordle")
+    parser.add_argument('--hid_dim', type=int, default=128)
+    parser.add_argument('--emb_dim', type=int, default=16)
+    parser.add_argument('--entropy_coef', type=float, default=0.1)
     args = parser.parse_args()
 
-    main(base_seed=args.seed, total_steps=args.total_steps)
+    main(
+        base_seed=args.seed,
+        total_steps=args.total_steps,
+        hid_dim=args.hid_dim,
+        emb_dim=args.emb_dim,
+        entropy_coef=args.entropy_coef,
+        logdir=args.logdir
+    )
