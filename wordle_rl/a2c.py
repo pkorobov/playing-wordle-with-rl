@@ -3,8 +3,7 @@ from torch.nn.utils import clip_grad_norm_
 import torch
 
 
-# DEVICE = torch.device('cpu')
-DEVICE = torch.device('cuda')
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class A2C:
@@ -24,7 +23,7 @@ class A2C:
         log_probs = trajectory['log_probs'].to(DEVICE)
         value_loss = (targets - values).pow(2).mean()
 
-        entropy_loss = log_probs.mean()
+        entropy_loss = (log_probs * (1 + log_probs.detach())).mean()
         advantage = (targets - values).detach()
         policy_loss = -(log_probs * advantage).mean()
 

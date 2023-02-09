@@ -117,9 +117,9 @@ class WordleEnv(gym.Env):
             observation (object): agent's observation of the current environment
             reward (float) : amount of reward returned after previous action
             done (bool): whether the episode has ended, in which case further step() calls will return undefined results
-            info: None TODO: use it somehow
+            info: None
         """
-        
+
         action = action.squeeze()
         assert len(action.shape) == 1, action.shape
         assert len(action) == WORD_LENGTH, len(action)

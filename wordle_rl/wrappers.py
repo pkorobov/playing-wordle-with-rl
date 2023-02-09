@@ -7,7 +7,6 @@ import numpy as np
 import gym
 import gym.spaces as spaces
 from wordle_rl.wordle_env import WordleEnv
-from gym.wrappers import Monitor
 from tensorboardX import SummaryWriter
 
 from wordle_rl.env_batch import ParallelEnvBatch, WordleParallelEnvBatch
@@ -62,8 +61,7 @@ class TensorboardSummaries(gym.Wrapper):
 
     def __init__(
             self, env, prefix=None,
-            rew_running_mean_size=100, ep_running_mean_size=5,
-            step_var=None
+            rew_running_mean_size=100, ep_running_mean_size=5
     ):
         super(TensorboardSummaries, self).__init__(env)
         self.episode_counter = 0
@@ -73,7 +71,7 @@ class TensorboardSummaries(gym.Wrapper):
 
         self.nenvs = getattr(self.env.unwrapped, "nenvs", 1)
         self.rewards = np.zeros(self.nenvs)
-        self.had_ended_episodes = np.zeros(self.nenvs, dtype=np.bool)
+        self.had_ended_episodes = np.zeros(self.nenvs, dtype=bool)
         self.episode_lengths = np.zeros(self.nenvs)
         self.reward_queues = [deque([], maxlen=rew_running_mean_size)
                               for _ in range(self.nenvs)]
@@ -166,7 +164,7 @@ class _thunk:
         return nature_dqn_env(seed=self.env_seed, summaries=False, **self.kwargs)
 
 
-def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, logdir="wordle"):
+def nature_dqn_env(nenvs=None, seed=None, summaries=True, logdir="wordle"):
     """ Wraps env as in Nature DQN paper and creates parallel actors. """
     if nenvs is not None:
         if seed is None:
@@ -185,14 +183,11 @@ def nature_dqn_env(nenvs=None, seed=None, summaries=True, monitor=False, logdir=
         return env
 
     env = WordleEnv()
-    env.seed(seed)
+    env.reset(seed=seed)
     
     env = SequenceWrapper(env, sos_token=1)
 
     if summaries:
         env = TensorboardSummaries(env)
-
-    if monitor:
-        env = gym.wrappers.Monitor(env, directory="videos", force=True)
 
     return env
