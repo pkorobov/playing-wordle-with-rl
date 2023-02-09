@@ -1,5 +1,5 @@
 from wordle_rl.wordle_env import WordleEnv
-from wordle_rl.model import RNNAgent
+from wordle_rl.agent import RNNAgent
 from wordle_rl.wrappers import nature_dqn_env
 from wordle_rl.runners import EnvRunner
 

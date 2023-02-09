@@ -4,8 +4,9 @@ from argparse import ArgumentParser
 import numpy as np
 import random
 
+import os
 
-from wordle_rl.model import RNNAgent
+from wordle_rl.agent import RNNAgent, RandomAgent
 from wordle_rl.wrappers import nature_dqn_env
 from wordle_rl.runners import EnvRunner
 
@@ -35,8 +36,7 @@ def main(base_seed, total_steps, hid_dim, emb_dim, entropy_coef, logdir):
     env = nature_dqn_env(nenvs=nenvs, seed=[i + base_seed for i in range(nenvs)], logdir=logdir)
     game_voc_matrix = torch.FloatTensor(env.game_voc_matrix)
 
-    obs = env.reset()
-
+    _ = env.reset()
     tokenizer = Tokenizer()
 
     policy = RNNAgent(
@@ -51,11 +51,11 @@ def main(base_seed, total_steps, hid_dim, emb_dim, entropy_coef, logdir):
         game_voc_matrix=game_voc_matrix
     )
 
-    runner = EnvRunner(env, policy, nsteps=nsteps, transforms=[ComputeValueTargets(policy),
-                                                               MergeTimeBatch()])
-    # optimizer = RMSprop(policy.parameters(), 5e-3)
+    runner = EnvRunner(env, policy, nsteps=nsteps, transforms=[ComputeValueTargets(policy), MergeTimeBatch()])
     optimizer = RMSprop(policy.parameters(), 7e-4)
     a2c = A2C(policy, optimizer,  entropy_coef=entropy_coef, max_grad_norm=50.0)
+
+    os.makedirs("./model_weights", exist_ok=True)
 
     env.reset()
     for step in trange(0, total_steps + 1, nenvs * nsteps):
@@ -66,6 +66,25 @@ def main(base_seed, total_steps, hid_dim, emb_dim, entropy_coef, logdir):
     return a2c
 
 
+def run_random(base_seed, total_steps, logdir):
+    nenvs = 6
+    nsteps = 32
+
+    assert base_seed >= nenvs
+
+    fix_seed(base_seed)
+    env = nature_dqn_env(nenvs=nenvs, seed=[i + base_seed for i in range(nenvs)], logdir=logdir)
+    game_voc_matrix = torch.FloatTensor(env.game_voc_matrix)
+
+    _ = env.reset()
+    policy = RandomAgent(game_voc_matrix=game_voc_matrix)
+    runner = EnvRunner(env, policy, nsteps=nsteps)
+
+    env.reset()
+    for _ in trange(0, total_steps + 1, nenvs * nsteps):
+        runner.get_next()
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--seed', type=int, default=100)
@@ -73,14 +92,22 @@ if __name__ == "__main__":
     parser.add_argument('--logdir', type=str, default="wordle")
     parser.add_argument('--hid_dim', type=int, default=128)
     parser.add_argument('--emb_dim', type=int, default=16)
-    parser.add_argument('--entropy_coef', type=float, default=0.1)
+    parser.add_argument('--entropy_coef', type=float, default=0.01)
+    parser.add_argument('--agent', type=str, default="main")
     args = parser.parse_args()
 
-    main(
-        base_seed=args.seed,
-        total_steps=args.total_steps,
-        hid_dim=args.hid_dim,
-        emb_dim=args.emb_dim,
-        entropy_coef=args.entropy_coef,
-        logdir=args.logdir
-    )
+    if args.agent == 'main':
+        main(
+            base_seed=args.seed,
+            total_steps=args.total_steps,
+            hid_dim=args.hid_dim,
+            emb_dim=args.emb_dim,
+            entropy_coef=args.entropy_coef,
+            logdir=args.logdir
+        )
+    else:
+        run_random(
+            base_seed=args.seed,
+            total_steps=args.total_steps,
+            logdir=args.logdir
+        )
