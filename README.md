@@ -50,4 +50,4 @@ The agent performs a bit worse (as you see on a picture in the beginning, saser 
 
 -----
 
-You can also test it yourself in the end of `demo.ipynb`
+You can also test it yourself at the end of `demo.ipynb`
