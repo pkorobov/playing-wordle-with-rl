@@ -1,8 +1,10 @@
-gym==0.22.0
-jupyterlab==3.3.4
-matplotlib==3.5.1
+gym==0.25.2
+matplotlib==3.5.3
+numpy==1.23.1
+seaborn==0.12.2
 pytest==7.1.2
 tensorboard==2.8.0
-tensorboardX==2.5
-torch==1.11.0
-tqdm==4.64.0
+tensorboardX==2.5.1
+termcolor==1.1.0
+torch==1.12.1
+tqdm==4.64.1
